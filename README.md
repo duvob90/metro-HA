@@ -62,21 +62,32 @@ entities:
 
 ### Mushroom chips (colores por estado)
 ```yaml
-type: custom:mushroom-chips-card
-alignment: center
-chips:
-  - type: template
-    entity: sensor.metro_linea_1
-    icon: mdi:subway-variant
-    content: "L1: {{ states('sensor.metro_linea_1') }}"
-    icon_color: >-
-      {{ 'green' if is_state('sensor.metro_linea_1','Operativa') else 'red' }}
-  - type: template
-    entity: sensor.metro_santiago_resumen
-    icon: mdi:train
-    content: "{{ states('sensor.metro_santiago_resumen') }}"
-    icon_color: >-
-      {{ 'green' if is_state('sensor.metro_santiago_resumen','Operativa') else 'red' }}
+type: custom:mushroom-template-card
+icon: mdi:train
+icon_color: >
+  {% set det = state_attr('sensor.metro_santiago_resumen','detalle') or {} %} {%
+  set affected = det.values() | map('length') | list | sum %} {{ 'green' if
+  affected == 0 else 'red' }}
+layout: vertical
+multiline_secondary: true
+primary: Metro de Santiago
+secondary: >
+  {% set det = state_attr('sensor.metro_santiago_resumen','detalle') or {} %}
+
+  {% set names = {'L1':'Línea 1','L2':'Línea 2','L3':'Línea 3','L4':'Línea
+  4','L4A':'Línea 4A','L5':'Línea 5','L6':'Línea 6'} %}
+
+  {% set order = ['L1','L2','L3','L4','L4A','L5','L6'] %}
+
+  {% set ns = namespace(out=[]) %}
+
+  {% for ln in order %}
+    {% set aff = det.get(ln, []) %}
+    {% set line = names[ln] ~ ' — ' ~ ('Operativa' if (aff|length == 0) else 'Con incidencias (' ~ (aff|length) ~ ')') %}
+    {% set ns.out = ns.out + [ line ] %}
+  {% endfor %}
+
+  {{ ns.out | join('\n') }}
 ```
 
 ## Troubleshooting
