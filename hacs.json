@@ -1,6 +1,9 @@
 {
   "name": "Metro de Santiago",
-  "domain": "metro_santiago",
-  "country": "CL",
-  "render_readme": true
+  "content_in_root": false,
+  "domains": [
+    "metro_santiago"
+  ],
+  "render_readme": true,
+  "country": "CL"
 }
