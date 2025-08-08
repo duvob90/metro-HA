@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Metro de Santiago",
+        "description": "Configura la integraci\u00f3n.",
+        "data": {
+          "scan_interval": "Intervalo de actualizaci\u00f3n (segundos)"
+        }
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "data": {
+            "scan_interval": "Intervalo de actualizaci\u00f3n (segundos)"
+          }
+        }
+      }
+    }
+  }
+}
