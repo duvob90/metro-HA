@@ -64,30 +64,43 @@ entities:
 ```yaml
 type: custom:mushroom-template-card
 icon: mdi:train
-icon_color: >
-  {% set det = state_attr('sensor.metro_santiago_resumen','detalle') or {} %} {%
-  set affected = det.values() | map('length') | list | sum %} {{ 'green' if
-  affected == 0 else 'red' }}
 layout: vertical
 multiline_secondary: true
-primary: Metro de Santiago
-secondary: >
+# Color del ícono según si hay afectadas en alguna línea
+icon_color: >
   {% set det = state_attr('sensor.metro_santiago_resumen','detalle') or {} %}
-
-  {% set names = {'L1':'Línea 1','L2':'Línea 2','L3':'Línea 3','L4':'Línea
-  4','L4A':'Línea 4A','L5':'Línea 5','L6':'Línea 6'} %}
-
-  {% set order = ['L1','L2','L3','L4','L4A','L5','L6'] %}
-
-  {% set ns = namespace(out=[]) %}
-
-  {% for ln in order %}
-    {% set aff = det.get(ln, []) %}
-    {% set line = names[ln] ~ ' — ' ~ ('Operativa' if (aff|length == 0) else 'Con incidencias (' ~ (aff|length) ~ ')') %}
-    {% set ns.out = ns.out + [ line ] %}
+  {% set total = 0 %}
+  {% for k,info in det.items() %}
+    {% set total = total
+      + (info.get('cerradas_temporalmente',[]) | length)
+      + (info.get('no_habilitadas',[]) | length)
+      + (info.get('accesos_cerrados',[]) | length)
+    %}
   {% endfor %}
-
+  {{ 'green' if total == 0 else 'red' }}
+primary: Metro de Santiago
+secondary: |
+  {% set det = state_attr('sensor.metro_santiago_resumen','detalle') or {} %}
+  {% set names = {'L1':'Línea 1','L2':'Línea 2','L3':'Línea 3','L4':'Línea 4','L4A':'Línea 4A','L5':'Línea 5','L6':'Línea 6'} %}
+  {% set order = ['L1','L2','L3','L4','L4A','L5','L6'] %}
+  {% set ns = namespace(out=[]) %}
+  {% for ln in order %}
+    {% set info = det.get(ln, {}) %}
+    {% set cerradas = (info.get('cerradas_temporalmente',[]) | length)
+                    + (info.get('no_habilitadas',[]) | length)
+                    + (info.get('accesos_cerrados',[]) | length) %}
+    {% set total = info.get('totales', 0) %}
+    {% if total > 0 and cerradas == total %}
+      {% set state = 'Cerrada' %}
+    {% elif cerradas > 0 %}
+      {% set state = 'Con incidencias (' ~ cerradas ~ ')' %}
+    {% else %}
+      {% set state = 'Operativa' %}
+    {% endif %}
+    {% set ns.out = ns.out + [ names[ln] ~ ' — ' ~ state ] %}
+  {% endfor %}
   {{ ns.out | join('\n') }}
+
 ```
 
 ## Troubleshooting
