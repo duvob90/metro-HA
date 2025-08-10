@@ -3,12 +3,19 @@ from typing import Any, List
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
 from .const import DOMAIN, LINES
 
 LINE_NAME = {
-    "L1": "Línea 1", "L2": "Línea 2", "L3": "Línea 3",
-    "L4": "Línea 4", "L4A": "Línea 4A", "L5": "Línea 5", "L6": "Línea 6"
+    "L1": "Línea 1",
+    "L2": "Línea 2",
+    "L3": "Línea 3",
+    "L4": "Línea 4",
+    "L4A": "Línea 4A",
+    "L5": "Línea 5",
+    "L6": "Línea 6",
 }
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     data = hass.data[DOMAIN][entry.entry_id]
@@ -20,6 +27,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     ents.append(MetroSummarySensor(coordinator))
     async_add_entities(ents, True)
 
+
 def _line_data(coordinator, line_id: str) -> dict | None:
     data = coordinator.data or {}
     lines = data.get("lines", [])
@@ -28,14 +36,16 @@ def _line_data(coordinator, line_id: str) -> dict | None:
             return ln
     return None
 
+
 def _split_by_status(stations: List[dict[str, Any]]):
-    """Separa estaciones por tipo de status según la API xorcl:
+    """Separa estaciones por código de estado (API xor.cl):
        0 operativa, 1 cerrada temporal, 2 no habilitada, 3 accesos cerrados."""
     oper = [s for s in stations if s.get("status", 0) == 0]
     closed_temp = [s for s in stations if s.get("status") == 1]
     not_enabled = [s for s in stations if s.get("status") == 2]
     access_closed = [s for s in stations if s.get("status") == 3]
     return oper, closed_temp, not_enabled, access_closed
+
 
 class MetroLineSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, line_id: str):
@@ -59,18 +69,18 @@ class MetroLineSensor(CoordinatorEntity, SensorEntity):
         total = len(stations)
         closed_like = len(closed_temp) + len(not_enabled)
 
-        # TODAS cerradas/no habilitadas -> Cerrada (típico fuera de horario)
-        if closed_like == total:
+        # Totalmente cerrada (típico fuera de horario)
+        if total > 0 and closed_like == total:
             return "Cerrada"
 
-        # Hay cierres o accesos cerrados, pero no es cierre total
+        # Hay incidencias parciales
         if closed_like > 0 or len(access_closed) > 0:
-            # Si predominantemente hay accesos cerrados y casi todo operativo, dilo
+            # Solo accesos cerrados pero todo operativo en andenes
             if len(access_closed) > 0 and closed_like == 0:
                 return "Con accesos cerrados"
             return "Con incidencias"
 
-        # Ninguna afectación
+        # Sin afectaciones
         return "Operativa"
 
     @property
@@ -81,15 +91,17 @@ class MetroLineSensor(CoordinatorEntity, SensorEntity):
         stations: List[dict[str, Any]] = ln.get("stations", [])
         oper, closed_temp, not_enabled, access_closed = _split_by_status(stations)
 
-        def names(lst): return [s.get("name") for s in lst]
+        def names(lst):  # nombres de estaciones
+            return [s.get("name") for s in lst]
 
         return {
             "operativas": names(oper),
             "cerradas_temporalmente": names(closed_temp),
             "no_habilitadas": names(not_enabled),
             "accesos_cerrados": names(access_closed),
-            "totales": len(stations)
+            "totales": len(stations),
         }
+
 
 class MetroSummarySensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator):
@@ -104,21 +116,32 @@ class MetroSummarySensor(CoordinatorEntity, SensorEntity):
         lines = data.get("lines", [])
         total_closed_like = 0
         total_access_closed = 0
+        total_stations = 0
+
         for ln in lines:
             stations = ln.get("stations", [])
+            total_stations += len(stations)
             _, ctemp, nena, acc = _split_by_status(stations)
             total_closed_like += len(ctemp) + len(nena)
             total_access_closed += len(acc)
 
+        if total_stations == 0:
+            return "Sin datos"
+
+        # Si todas las estaciones están cerradas/no habilitadas
+        if total_closed_like == total_stations:
+            return "Cerrada"
+
         if total_closed_like == 0 and total_access_closed == 0:
             return "Operativa"
-        # Si TODAS las estaciones están cerradas/no habilitadas en todas las líneas, opcionalmente podríamos mostrar “Cerrada”
+
         return "Con incidencias"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self.coordinator.data or {}
-        detalle = {}
+        detalle: dict[str, dict[str, Any]] = {}
+
         for ln in data.get("lines", []):
             lid = ln.get("id")
             stations = ln.get("stations", [])
@@ -129,6 +152,17 @@ class MetroSummarySensor(CoordinatorEntity, SensorEntity):
                 "cerradas_temporalmente": [s.get("name") for s in ctemp],
                 "no_habilitadas": [s.get("name") for s in nena],
                 "accesos_cerrados": [s.get("name") for s in acc],
-                "totales": len(stations)
+                "totales": len(stations),
             }
-        return {"detalle": detalle}
+
+        # ---- Retrocompatibilidad: lista plana con estaciones afectadas ----
+        estaciones_afectadas: list[str] = []
+        for info in detalle.values():
+            estaciones_afectadas.extend(info.get("cerradas_temporalmente", []))
+            estaciones_afectadas.extend(info.get("no_habilitadas", []))
+            estaciones_afectadas.extend(info.get("accesos_cerrados", []))
+
+        return {
+            "detalle": detalle,                   # Formato nuevo (por línea y tipo)
+            "estaciones_afectadas": estaciones_afectadas,  # Formato clásico (lista plana)
+        }
